@@ -1,55 +1,78 @@
-import { fetchBreeds, fetchCatByBreed } from './cat-api.js';
+import { CatApiService } from './js/cat-api';
+import SlimSelect from 'slim-select';
 import Notiflix from 'notiflix';
+import Loader from './js/loader';
 
-const breedSelect = document.querySelector('.breed-select');
-const loader = document.querySelector('.loader');
-const error = document.querySelector('.error');
-const catInfo = document.querySelector('.cat-info');
+const refs = {
+  select: document.querySelector('.breed-select'),
+  loader: document.querySelector('.loader'),
+  error: document.querySelector('.error'),
+  catInfo: document.querySelector('.cat-info'),
+};
 
-// Функція для показу/приховування елементів на сторінці
-function toggleElements(isLoading) {
-  breedSelect.style.display = isLoading ? 'none' : 'block';
-  loader.style.display = isLoading ? 'block' : 'none';
-  error.style.display = 'none';
-  catInfo.style.display = 'none';
+const catApiServiceInstance = new CatApiService();
+
+const loader = new Loader({
+  hidden: true,
+});
+
+
+catApiServiceInstance
+  .fetchBreeds()
+  .then(({ data }) => {
+    createOptionMarkup(data);
+    new SlimSelect({
+      select: refs.select,
+    });
+  })
+  .catch(data => {
+    loader.showErrorLoader();
+    Notiflix.Notify.failure(data.message);
+  });
+
+function createOptionMarkup(data) {
+  const optionsMarkup = data
+    .map(({ id, name }) => `<option value=${id}>${name}</option>`)
+    .join('');
+
+  return refs.select.insertAdjacentHTML('afterbegin', optionsMarkup);
 }
-// console.log(toggleElements(isLoading));
 
-// Завантаження списку порід котів при завантаженні сторінки
-document.addEventListener('DOMContentLoaded', async () => {
-  toggleElements(true);
-  try {
-    const breeds = await fetchBreeds();
-    breedSelect.innerHTML = breeds.map(breed => `<option value="${breed.id}">${breed.name}</option>`).join('');
-    toggleElements(false);
-  } catch (error) {
-    console.error('Error fetching cat breeds:', error);
-    toggleElements(false);
-    Notiflix.Notify.failure('❌ Error fetching cat breeds');
-  }
-});
+refs.select.addEventListener('change', handleCatByBreed);
 
-// Запит за інформацією про кота при виборі породи у селекті
-breedSelect.addEventListener('change', async () => {
-  toggleElements(true);
-  const breedId = breedSelect.value;
-  try {
-    const catData = await fetchCatByBreed(breedId);
-    const { name, description, temperament } = catData.breeds[0];
-    const imageSrc = catData.url;
 
-    catInfo.innerHTML = `
-      <h2>${name}</h2>
-      <p><strong>Description:</strong> ${description}</p>
-      <p><strong>Temperament:</strong> ${temperament}</p>
-      <img src="${imageSrc}" alt="${name}" />
-    `;
+function handleCatByBreed(event) {
+  const selectedBreed = event.target.value;
+  refs.catInfo.innerHTML = ' ';
+  loader.show();
 
-    catInfo.style.display = 'block';
-    toggleElements(false);
-  } catch (error) {
-    console.error('Error fetching cat info:', error);
-    toggleElements(false);
-    Notiflix.Notify.failure('❌ Error fetching cat info');
-  }
-});
+  catApiServiceInstance
+    .fetchCatByBreed(selectedBreed)
+    .then(({ data }) => {
+      loader.hide();
+      const { breeds, url } = data[0];
+      const { name, description, temperament } = breeds[0];
+
+      refs.catInfo.innerHTML = createCatCardMarkup(
+        url,
+        name,
+        description,
+        temperament
+      );
+    })
+    .catch(data => {
+      loader.showErrorLoader();
+      Notiflix.Notify.failure(
+        'Oops! Something went wrong! Try reloading the page!'
+      );
+    });
+}
+
+
+function createCatCardMarkup(url, name, description, temperament) {
+  return `
+    <img class="cat-image" src=${url} alt="${name}"/>
+    <h2 class="cat-name">${name}</h2>
+    <p class="cat-description"><span class="cat-span">Description: </span>${description}</p>
+    <p class="cat-temperament"><span class="cat-span">Temperament: </span> ${temperament}</p>`;
+}
